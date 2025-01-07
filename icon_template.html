@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>生成图标</title>
+</head>
+<body>
+    <canvas id="icon16" width="16" height="16"></canvas>
+    <canvas id="icon48" width="48" height="48"></canvas>
+    <canvas id="icon128" width="128" height="128"></canvas>
+    
+    <script>
+    function drawIcon(canvasId, size) {
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        
+        // 设置背景色
+        ctx.fillStyle = '#1a73e8';  // Google蓝
+        ctx.fillRect(0, 0, size, size);
+        
+        // 画文档图标
+        ctx.fillStyle = 'white';
+        ctx.fillRect(size*0.25, size*0.15, size*0.5, size*0.7);
+        
+        // 画侧边栏标志
+        ctx.fillStyle = '#1a73e8';
+        ctx.fillRect(size*0.65, size*0.15, size*0.1, size*0.7);
+        
+        // 导出PNG
+        const link = document.createElement('a');
+        link.download = `${canvasId}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }
+    
+    // 生成三种尺寸的图标
+    drawIcon('icon16', 16);
+    drawIcon('icon48', 48);
+    drawIcon('icon128', 128);
+    </script>
+</body>
+</html> 
