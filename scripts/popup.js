@@ -10,6 +10,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 检查文档链接是否有效的函数
+    async function sendMessage(action, payload = {}) {
+        if (!chrome.runtime?.sendMessage) {
+            return;
+        }
+
+        try {
+            await chrome.runtime.sendMessage({ action, ...payload });
+        } catch (error) {
+            const message = chrome.runtime?.lastError?.message || error?.message;
+            if (!message?.includes('Receiving end does not exist')) {
+                console.warn(`发送 ${action} 消息失败:`, message || error);
+            }
+        }
+    }
+
+    async function openSidePanel() {
+        if (!chrome.sidePanel) {
+            return;
+        }
+
+        try {
+            await chrome.sidePanel.setOptions({
+                enabled: true,
+                path: 'sidebar.html'
+            });
+            await chrome.sidePanel.open();
+        } catch (error) {
+            console.error('打开侧边栏失败:', error);
+            throw error;
+        }
+    }
+
     function isValidDocLink(url) {
         try {
             const urlObj = new URL(url);
@@ -41,24 +73,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // 保存链接到浏览器存储中
-            await chrome.storage.local.set({ docLink });
-            
-            // 打开侧边栏
-            if (chrome.sidePanel) {
-                chrome.sidePanel.setOptions({
-                    enabled: true,
-                    path: 'sidebar.html'
-                }).then(() => {
-                    return chrome.sidePanel.open();
-                }).catch(error => {
-                    console.error('设置侧边栏失败:', error);
-                    alert('输入成功，重新点击插件以打开文档');
-                });
-            }
-            
+            await chrome.storage.local.set({ docLink, updatedAt: Date.now() });
+
+            // 主动通知侧边栏加载最新链接
+            await sendMessage('loadDoc', { docLink });
+
             // 通知background.js切换popup
-            chrome.runtime.sendMessage({ action: 'documentOpened' });
-            
+            await sendMessage('documentOpened');
+
+            // 打开侧边栏供用户使用
+            await openSidePanel();
+
             // 关闭弹出窗口
             window.close();
         } catch (error) {

@@ -11,7 +11,8 @@
   ],
   "host_permissions": [
     "*://*.feishu.cn/*",
-    "*://*.qq.com/*"
+    "*://*.qq.com/*",
+    "*://*.larksuite.com/*"
   ],
   "action": {
     "default_popup": "popup.html",

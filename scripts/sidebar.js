@@ -1,70 +1,170 @@
 document.addEventListener('DOMContentLoaded', () => {
     const docFrame = document.getElementById('docFrame');
     const reloadButton = document.getElementById('reloadDoc');
-    
-    // 创建加载提示的div
-    const loadingDiv = document.createElement('div');
-    loadingDiv.innerHTML = '正在加载文档...';
-    loadingDiv.style.cssText = `
+    const statusOverlay = document.createElement('div');
+    const statusText = document.createElement('span');
+
+    let currentDocLink = '';
+    let forceOverlay = false;
+
+    statusOverlay.style.cssText = `
         position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        background: rgba(255, 255, 255, 0.95);
+        padding: 20px 24px;
+        border-radius: 12px;
+        box-shadow: 0 12px 60px rgba(15, 23, 42, 0.18);
         z-index: 1000;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #1f2937;
+        min-width: 220px;
+        text-align: center;
+        display: none;
+        line-height: 1.5;
     `;
-    document.body.appendChild(loadingDiv);
+    statusText.textContent = '正在加载文档...';
+    statusOverlay.appendChild(statusText);
+    document.body.appendChild(statusOverlay);
 
-    // 从浏览器存储中获取文档链接并加载
-    chrome.storage.local.get(['docLink'], function(result) {
-        if (result.docLink) {
-            docFrame.src = result.docLink;
-            
-            docFrame.onload = () => {
-                loadingDiv.style.display = 'none';
-            };
+    const placeholderTemplate = (message) => `
+        <html>
+            <head>
+                <meta charset="utf-8" />
+                <style>
+                    body {
+                        margin: 0;
+                        height: 100vh;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        background: #f5f5f5;
+                        color: #4b5563;
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                        font-size: 16px;
+                        text-align: center;
+                        padding: 32px;
+                        box-sizing: border-box;
+                    }
+                    strong {
+                        color: #2563eb;
+                    }
+                </style>
+            </head>
+            <body>${message}</body>
+        </html>
+    `;
 
-            docFrame.onerror = () => {
-                loadingDiv.innerHTML = '加载文档失败，请检查链接是否正确';
-            };
-        } else {
-            loadingDiv.innerHTML = '请先在插件中输入文档链接';
+    const showOverlay = (message, options = {}) => {
+        const { persistent = false } = options;
+        statusText.textContent = message;
+        statusOverlay.style.display = 'block';
+        forceOverlay = persistent;
+    };
+
+    const hideOverlay = () => {
+        if (!forceOverlay) {
+            statusOverlay.style.display = 'none';
+        }
+    };
+
+    const resetOverlay = () => {
+        forceOverlay = false;
+        hideOverlay();
+    };
+
+    const showPlaceholder = (message) => {
+        currentDocLink = '';
+        forceOverlay = false;
+        statusOverlay.style.display = 'none';
+        docFrame.removeAttribute('src');
+        docFrame.srcdoc = placeholderTemplate(message);
+    };
+
+    const loadDocument = async (docLink) => {
+        if (!docLink) {
+            showPlaceholder('请先在插件中输入文档链接');
+            return;
+        }
+
+        if (docLink === currentDocLink && docFrame.src === docLink) {
+            return;
+        }
+
+        currentDocLink = docLink;
+        forceOverlay = false;
+        showOverlay('正在加载文档...');
+
+        try {
+            docFrame.srcdoc = '';
+            docFrame.src = docLink;
+        } catch (error) {
+            console.error('加载文档失败:', error);
+            showOverlay('加载文档失败，请检查链接是否正确', { persistent: true });
+            showPlaceholder('加载失败，请检查链接是否可在侧边栏内打开');
+        }
+    };
+
+    const refreshCurrentDocument = () => {
+        if (!currentDocLink) {
+            showPlaceholder('请先在插件中输入文档链接');
+            return;
+        }
+        showOverlay('正在重新加载文档...');
+        const previousSrc = docFrame.src;
+        docFrame.src = 'about:blank';
+        requestAnimationFrame(() => {
+            docFrame.src = previousSrc;
+        });
+    };
+
+    docFrame.addEventListener('load', () => {
+        resetOverlay();
+    });
+
+    docFrame.addEventListener('error', () => {
+        showOverlay('加载文档失败，请检查链接是否正确', { persistent: true });
+    });
+
+    chrome.storage.local.get({ docLink: '' }).then((result) => {
+        loadDocument(result.docLink);
+    });
+
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName === 'local' && changes.docLink) {
+            loadDocument(changes.docLink.newValue);
         }
     });
 
-    // 添加重新输入文档按钮点击事件
     reloadButton.addEventListener('click', async () => {
+        showOverlay('即将重置文档...', { persistent: true });
         try {
-            // 立即显示加载提示
-            loadingDiv.style.display = 'block';
-            loadingDiv.innerHTML = '请先在插件中输入文档链接';
-            
-            // 立即清空iframe内容
-            docFrame.srcdoc = '<html><body style="margin:0;display:flex;justify-content:center;align-items:center;height:100vh;background:#f5f5f5;font-family:Arial;color:#666;">请输入新的文档链接...</body></html>';
-            
-            // 重置popup页面为初始状态
-            await chrome.action.setPopup({ popup: 'popup.html' });
-            
-            // 清空当前文档链接
-            await chrome.storage.local.remove('docLink');
-            
-            // 打开popup
-            chrome.action.openPopup();
+            await chrome.storage.local.remove(['docLink', 'updatedAt']);
+            showPlaceholder('请输入新的文档链接...');
+
+            if (chrome.action?.setPopup) {
+                await chrome.action.setPopup({ popup: 'popup.html' });
+            }
+
+            if (chrome.action?.openPopup) {
+                await chrome.action.openPopup();
+            }
         } catch (error) {
             console.error('重置文档失败:', error);
+            showOverlay('重置失败，请手动点击插件图标重试', { persistent: true });
+        } finally {
+            forceOverlay = false;
+        }
+    });
+
+    chrome.runtime.onMessage.addListener((message) => {
+        if (message?.action === 'loadDoc') {
+            loadDocument(message.docLink);
+        }
+
+        if (message?.action === 'reloadDoc') {
+            refreshCurrentDocument();
         }
     });
 });
-
-// 保持现有的消息监听代码
-chrome.runtime.onMessage.addListener((message) => {
-    if (message.action === 'reloadDoc') {
-        const docFrame = document.getElementById('docFrame');
-        if (docFrame && docFrame.src) {
-            docFrame.src = docFrame.src;
-        }
-    }
-}); 
