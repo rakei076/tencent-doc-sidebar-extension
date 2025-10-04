@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "腾讯文档侧边栏",
-  "version": "1.0",
+  "version": "3.1",
   "description": "在浏览器侧边栏打开腾讯文档/飞书文档",
   "minimum_chrome_version": "114",
   "permissions": [
     "sidePanel",
     "storage",
-    "activeTab"
+    "activeTab",
+    "tabs"
   ],
   "host_permissions": [
     "*://*.feishu.cn/*",

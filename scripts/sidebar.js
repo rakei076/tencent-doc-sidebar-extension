@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
         text-align: center;
         display: none;
         line-height: 1.5;
+        white-space: pre-line;
     `;
     statusText.textContent = '正在加载文档...';
     statusOverlay.appendChild(statusText);
@@ -82,6 +83,8 @@ document.addEventListener('DOMContentLoaded', () => {
         docFrame.srcdoc = placeholderTemplate(message);
     };
 
+    const EMBED_TIP_TEXT = '加载失败，可能原因：\n• 链接无效或权限不足\n• 文档未开启“网页预览/允许嵌入”\n• 浏览器拦截了第三方 Cookie';
+
     const loadDocument = async (docLink) => {
         if (!docLink) {
             showPlaceholder('请先在插件中输入文档链接');
@@ -101,8 +104,9 @@ document.addEventListener('DOMContentLoaded', () => {
             docFrame.src = docLink;
         } catch (error) {
             console.error('加载文档失败:', error);
-            showOverlay('加载文档失败，请检查链接是否正确', { persistent: true });
-            showPlaceholder('加载失败，请检查链接是否可在侧边栏内打开');
+            showOverlay(EMBED_TIP_TEXT, { persistent: true });
+            const placeholderMessage = `加载失败，可能原因：<br>• 链接无效或权限不足<br>• 文档未开启“网页预览/允许嵌入”<br>• 浏览器拦截了第三方 Cookie<br><br>建议：在文档分享设置中开启网页预览/允许嵌入，或将上述域名加入 Cookie 允许列表。`;
+            showPlaceholder(placeholderMessage);
         }
     };
 
