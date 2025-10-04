@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
             throw new Error('当前浏览器版本不支持侧边栏 API，需使用 Chrome 114 及以上版本。');
         }
 
-        const callSidePanel = async (methodName, argVariants = [[]]) => {
+        const callSidePanel = async (methodName, argVariants) => {
             const fn = chrome.sidePanel?.[methodName];
             if (typeof fn !== 'function') {
                 throw new Error('当前浏览器版本暂不支持侧边栏 API 的完整功能。');
@@ -57,44 +57,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let lastError;
 
-            const invoke = async (args, mode) => {
+            for (const args of argVariants) {
                 try {
-                    if (mode === 'promise') {
-                        const result = fn.call(chrome.sidePanel, ...args);
-                        if (result && typeof result.then === 'function') {
-                            await result;
-                        }
-                        return true;
+                    const expectsCallback = fn.length > args.length;
+
+                    if (expectsCallback) {
+                        await new Promise((resolve, reject) => {
+                            try {
+                                fn.call(chrome.sidePanel, ...args, (...cbArgs) => {
+                                    const runtimeError = chrome.runtime?.lastError;
+                                    if (runtimeError) {
+                                        reject(new Error(runtimeError.message));
+                                    } else {
+                                        resolve(cbArgs[0]);
+                                    }
+                                });
+                            } catch (error) {
+                                reject(error);
+                            }
+                        });
+                        return;
                     }
 
-                    await new Promise((resolve, reject) => {
-                        try {
-                            fn.call(chrome.sidePanel, ...args, (...cbArgs) => {
-                                const runtimeError = chrome.runtime?.lastError;
-                                if (runtimeError) {
-                                    reject(new Error(runtimeError.message));
-                                } else {
-                                    resolve(cbArgs[0]);
-                                }
-                            });
-                        } catch (error) {
-                            reject(error);
-                        }
-                    });
-                    return true;
+                    const result = fn.call(chrome.sidePanel, ...args);
+                    if (result && typeof result.then === 'function') {
+                        await result;
+                    }
+                    return;
                 } catch (error) {
                     lastError = error;
-                    return false;
-                }
-            };
-
-            for (const args of argVariants) {
-                if (await invoke(args, 'promise')) {
-                    return;
-                }
-
-                if (await invoke(args, 'callback')) {
-                    return;
                 }
             }
 
@@ -125,19 +116,26 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const context = await getActiveContext();
 
-            await callSidePanel('setOptions', [[{
-                path: 'sidebar.html'
-            }]]);
+            const setOptionsVariants = [];
+            if (context.tabId != null) {
+                setOptionsVariants.push([{ tabId: context.tabId, path: 'sidebar.html', enabled: true }]);
+            }
+            setOptionsVariants.push([{ path: 'sidebar.html', enabled: true }]);
 
-            const openArgs = [
-                [],
-                [{}],
-                context.tabId != null ? [{ tabId: context.tabId }] : null,
-                context.windowId != null ? [{ windowId: context.windowId }] : null,
-                [undefined]
-            ].filter(Boolean);
+            await callSidePanel('setOptions', setOptionsVariants);
 
-            await callSidePanel('open', openArgs);
+            const openVariants = [];
+            if (context.tabId != null) {
+                openVariants.push([{ tabId: context.tabId }]);
+            }
+            if (context.windowId != null) {
+                openVariants.push([{ windowId: context.windowId }]);
+            }
+            if (typeof chrome.windows?.WINDOW_ID_CURRENT === 'number') {
+                openVariants.push([{ windowId: chrome.windows.WINDOW_ID_CURRENT }]);
+            }
+
+            await callSidePanel('open', openVariants);
         } catch (error) {
             const message = getErrorMessage(error);
             console.error('打开侧边栏失败:', message);
